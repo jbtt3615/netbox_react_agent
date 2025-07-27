@@ -1,0 +1,18 @@
+[mysql]
+DB_HOST = localhost
+DB_USER = root
+DB_PASSWORD = your_password_here
+DB_PORT = 3306
+DB_NAME = netbox
+
+[netbox]
+NETBOX_URL = http://netbox:8080
+NETBOX_TOKEN = your_netbox_token_here
+
+[openai]
+OPENAI_API_KEY = your_openai_api_key_here
+
+[slack]
+SLACK_BOT_TOKEN = xoxb-your_slack_bot_token_here
+SLACK_SIGNING_SECRET = your_slack_signing_secret_here
+SLACK_APP_TOKEN = xapp-your_slack_app_token_here 

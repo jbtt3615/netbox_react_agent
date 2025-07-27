@@ -1,6 +1,57 @@
-version: '3.6'
+version: '3.8'
 
 services:
+  # Note: Using local MySQL instance from resources/db_config.ini
+  # MySQL service is not containerized - using your local MySQL
+
+  # Redis for NetBox caching
+  redis:
+    image: redis:7-alpine
+    container_name: netbox_redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NetBox application
+  netbox:
+    image: netboxcommunity/netbox:v4.0.0
+    container_name: netbox
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: host.docker.internal
+      DB_NAME: ${DB_NAME:-netbox}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_TYPE: mysql
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SECRET_KEY: your-secret-key-here-change-this-in-production
+      ALLOWED_HOSTS: localhost,127.0.0.1,netbox
+      DEBUG: "True"
+      SUPERUSER_NAME: admin
+      SUPERUSER_EMAIL: admin@example.com
+      SUPERUSER_PASSWORD: admin123
+    volumes:
+      - netbox_data:/opt/netbox/netbox/media
+      - ./resources:/resources
+    ports:
+      - "8000:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/status/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # NetBox React Agent
   netbox_react_agent:
     image: johncapobianco/netbox_react_agent:netbox_react_agent
     container_name: netbox_react_agent
@@ -10,3 +61,38 @@ services:
       dockerfile: ./docker/Dockerfile   
     ports:
       - "8501:8501"
+    environment:
+      - NETBOX_URL=http://netbox:8080
+      - NETBOX_TOKEN=${NETBOX_TOKEN:-your-netbox-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+    depends_on:
+      netbox:
+        condition: service_healthy
+    volumes:
+      - ./netbox_react_agent:/netbox_react_agent
+      - ./scripts:/scripts
+
+  # Slack Bot Service
+  slack_bot:
+    build:
+      context: ./
+      dockerfile: ./docker/SlackDockerfile
+    container_name: netbox_slack_bot
+    restart: always
+    environment:
+      - NETBOX_URL=http://netbox:8080
+      - NETBOX_TOKEN=${NETBOX_TOKEN:-your-netbox-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+    depends_on:
+      netbox:
+        condition: service_healthy
+    volumes:
+      - ./slack_bot:/slack_bot
+
+volumes:
+  netbox_data:

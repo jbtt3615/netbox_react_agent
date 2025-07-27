@@ -1,3 +1,6 @@
 streamlit
 langchain_community
 openai
+slack-bolt
+requests
+urllib3

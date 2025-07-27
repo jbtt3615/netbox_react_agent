@@ -3,7 +3,8 @@ import json
 import logging
 import requests
 import difflib
-import streamlit as st
+from slack_bolt import App
+from slack_bolt.adapter.socket_mode import SocketModeHandler
 from langchain_community.chat_models import ChatOpenAI
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.prompts import PromptTemplate
@@ -17,6 +18,20 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Global variables for lazy initialization
 llm = None
 agent_executor = None
+
+# Initialize Slack app
+try:
+    import sys
+    sys.path.append('../resources')
+    from config_loader import ConfigLoader
+    config = ConfigLoader()
+    slack_config = config.get_slack_config()
+    slack_bot_token = slack_config.get('SLACK_BOT_TOKEN')
+except:
+    # Fallback to environment variable
+    slack_bot_token = os.environ.get("SLACK_BOT_TOKEN")
+
+app = App(token=slack_bot_token)
 
 # NetBoxController for CRUD Operations
 class NetBoxController:
@@ -57,7 +72,6 @@ class NetBoxController:
         response.raise_for_status()
         return response.json()
 
-
 # Function to load supported URLs with their names from a JSON file
 def load_urls(file_path='netbox_apis.json'):
     if not os.path.exists(file_path):
@@ -69,11 +83,10 @@ def load_urls(file_path='netbox_apis.json'):
     except Exception as e:
         return {"error": f"Error loading URLs: {str(e)}"}
 
-
 def check_url_support(api_url: str) -> dict:
     url_list = load_urls()
     if "error" in url_list:
-        return url_list  # Return error if loading URLs failed
+        return url_list
 
     urls = [entry[0] for entry in url_list]
     names = [entry[1] for entry in url_list]
@@ -91,7 +104,6 @@ def check_url_support(api_url: str) -> dict:
         return {"status": "supported", "closest_url": closest_url, "closest_name": closest_name}
     else:
         return {"status": "unsupported", "message": f"The input '{api_url}' is not supported."}
-
 
 # Tools for interacting with NetBox
 @tool
@@ -175,90 +187,29 @@ def delete_netbox_data_tool(api_url: str) -> dict:
     except Exception as e:
         return {"error": f"An unexpected error occurred: {str(e)}"}
 
-def process_agent_response(response):
-    if response and response.get("status") == "supported" and "next_tool" in response.get("action", {}):
-        next_tool = response["action"]["next_tool"]
-        tool_input = response["action"]["input"]
-
-        # Automatically invoke the next tool
-        return agent_executor.invoke({
-            "input": tool_input,
-            "chat_history": st.session_state.chat_history,
-            "agent_scratchpad": "",
-            "tool": next_tool
-        })
-    else:
-        return response
-
-# ============================================================
-# Streamlit App
-# ============================================================
-
-def configure_page():
-    st.title("NetBox Configuration")
-    
-    # Try to load configuration from file
-    try:
-        import sys
-        sys.path.append('../resources')
-        from config_loader import ConfigLoader
-        config = ConfigLoader()
-        
-        # Pre-fill with existing values
-        netbox_config = config.get_netbox_config()
-        openai_config = config.get_openai_config()
-        
-        base_url = st.text_input("NetBox URL", value=netbox_config.get('NETBOX_URL', ''), placeholder="https://demo.netbox.dev")
-        api_token = st.text_input("NetBox API Token", value=netbox_config.get('NETBOX_TOKEN', ''), type="password", placeholder="Your API Token")
-        openai_key = st.text_input("OpenAI API Key", value=openai_config.get('OPENAI_API_KEY', ''), type="password", placeholder="Your OpenAI API Key")
-
-        if st.button("Save and Continue"):
-            if not base_url or not api_token or not openai_key:
-                st.error("All fields are required.")
-            else:
-                st.session_state['NETBOX_URL'] = base_url
-                st.session_state['NETBOX_TOKEN'] = api_token
-                st.session_state['OPENAI_API_KEY'] = openai_key
-                os.environ['NETBOX_URL'] = base_url
-                os.environ['NETBOX_TOKEN'] = api_token
-                os.environ['OPENAI_API_KEY'] = openai_key
-                st.success("Configuration saved! Redirecting to chat...")
-                st.session_state['page'] = "chat"
-                
-    except Exception as e:
-        st.error(f"Configuration error: {e}")
-        st.info("Please ensure resources/db_config.ini is properly configured")
-        
-        # Fallback to manual input
-        base_url = st.text_input("NetBox URL", placeholder="https://demo.netbox.dev")
-        api_token = st.text_input("NetBox API Token", type="password", placeholder="Your API Token")
-        openai_key = st.text_input("OpenAI API Key", type="password", placeholder="Your OpenAI API Key")
-
-        if st.button("Save and Continue"):
-            if not base_url or not api_token or not openai_key:
-                st.error("All fields are required.")
-            else:
-                st.session_state['NETBOX_URL'] = base_url
-                st.session_state['NETBOX_TOKEN'] = api_token
-                st.session_state['OPENAI_API_KEY'] = openai_key
-                os.environ['NETBOX_URL'] = base_url
-                os.environ['NETBOX_TOKEN'] = api_token
-                os.environ['OPENAI_API_KEY'] = openai_key
-                st.success("Configuration saved! Redirecting to chat...")
-                st.session_state['page'] = "chat"
-
 def initialize_agent():
     global llm, agent_executor
     if not llm:
-        # Initialize the LLM with the API key from session state
-        llm = ChatOpenAI(model_name="gpt-4o", openai_api_key=st.session_state['OPENAI_API_KEY'])
+        # Try to load configuration from file first
+        try:
+            import sys
+            sys.path.append('../resources')
+            from config_loader import ConfigLoader
+            config = ConfigLoader()
+            openai_config = config.get_openai_config()
+            openai_api_key = openai_config.get('OPENAI_API_KEY')
+        except:
+            # Fallback to environment variable
+            openai_api_key = os.getenv('OPENAI_API_KEY')
+        
+        # Initialize the LLM with the API key
+        llm = ChatOpenAI(model_name="gpt-4o", openai_api_key=openai_api_key)
 
         # Define tools
         tools = [discover_apis, check_supported_url_tool, get_netbox_data_tool, create_netbox_data_tool, delete_netbox_data_tool]
 
         # Create the prompt template
         tool_descriptions = render_text_description(tools)
-        # Create the PromptTemplate
         template = """
         Assistant is a network assistant capable of managing NetBox data using CRUD operations.
 
@@ -273,6 +224,7 @@ def initialize_agent():
         1. Use 'check_supported_url_tool' to validate ambiguous or unknown URLs or Names.
         2. If certain about the URL, directly use 'get_netbox_data_tool', 'create_netbox_data_tool', or 'delete_netbox_data_tool'.
         3. Follow a structured response format to ensure consistency.
+        4. Keep responses concise and well-formatted for Slack.
 
         FORMAT:
         Thought: [Your thought process]
@@ -311,73 +263,152 @@ def initialize_agent():
             max_iterations=10
         )
 
-def chat_page():
-    st.title("Chat with NetBox AI Agent")
-    user_input = st.text_input("Ask NetBox a question:", key="user_input")
+def process_agent_response(response):
+    if response and response.get("status") == "supported" and "next_tool" in response.get("action", {}):
+        next_tool = response["action"]["next_tool"]
+        tool_input = response["action"]["input"]
 
-    # Ensure the agent is initialized
-    if "OPENAI_API_KEY" not in st.session_state:
-        st.error("Please configure NetBox and OpenAI settings first!")
-        st.session_state['page'] = "configure"
+        # Automatically invoke the next tool
+        return agent_executor.invoke({
+            "input": tool_input,
+            "chat_history": "",
+            "agent_scratchpad": "",
+            "tool": next_tool
+        })
+    else:
+        return response
+
+# Slack event handlers
+@app.event("app_mention")
+def handle_mention(event, say):
+    """Handle when the bot is mentioned in a channel"""
+    user_message = event['text'].replace(f"<@{app.client.auth_test()['user_id']}>", "").strip()
+    
+    if not user_message:
+        say("Hello! I'm your NetBox assistant. Ask me anything about your network infrastructure!")
         return
+    
+    try:
+        # Initialize the agent
+        initialize_agent()
+        
+        # Process the message
+        response = agent_executor.invoke({
+            "input": user_message,
+            "chat_history": "",
+            "agent_scratchpad": ""
+        })
+        
+        # Process the agent's response
+        final_response = process_agent_response(response)
+        final_answer = final_response.get('output', 'No answer provided.')
+        
+        # Format the response for Slack
+        formatted_response = format_response_for_slack(final_answer)
+        say(formatted_response)
+        
+    except Exception as e:
+        say(f"Sorry, I encountered an error: {str(e)}")
 
-    initialize_agent()
+@app.event("message")
+def handle_dm(event, say):
+    """Handle direct messages to the bot"""
+    # Only respond to direct messages (not channel messages)
+    if event.get('channel_type') == 'im':
+        user_message = event['text'].strip()
+        
+        if not user_message:
+            say("Hello! I'm your NetBox assistant. Ask me anything about your network infrastructure!")
+            return
+        
+        try:
+            # Initialize the agent
+            initialize_agent()
+            
+            # Process the message
+            response = agent_executor.invoke({
+                "input": user_message,
+                "chat_history": "",
+                "agent_scratchpad": ""
+            })
+            
+            # Process the agent's response
+            final_response = process_agent_response(response)
+            final_answer = final_response.get('output', 'No answer provided.')
+            
+            # Format the response for Slack
+            formatted_response = format_response_for_slack(final_answer)
+            say(formatted_response)
+            
+        except Exception as e:
+            say(f"Sorry, I encountered an error: {str(e)}")
 
-    # Initialize session state variables if not already set
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = ""
+def format_response_for_slack(response_text):
+    """Format the agent response for Slack display"""
+    # If the response is JSON, format it nicely
+    try:
+        if isinstance(response_text, str) and response_text.strip().startswith('{'):
+            data = json.loads(response_text)
+            return format_json_for_slack(data)
+    except:
+        pass
+    
+    # For regular text responses
+    if len(response_text) > 3000:
+        # Truncate long responses
+        return response_text[:3000] + "\n\n... (response truncated)"
+    
+    return response_text
 
-    if "conversation" not in st.session_state:
-        st.session_state.conversation = []
+def format_json_for_slack(data):
+    """Format JSON data for Slack display"""
+    if isinstance(data, dict):
+        if 'results' in data and isinstance(data['results'], list):
+            # Handle paginated results
+            results = data['results']
+            if len(results) == 0:
+                return "No results found."
+            
+            formatted = f"Found {len(results)} result(s):\n\n"
+            for i, item in enumerate(results[:5]):  # Limit to first 5 results
+                formatted += f"*{i+1}.* "
+                if 'name' in item:
+                    formatted += f"**{item['name']}**"
+                elif 'display_name' in item:
+                    formatted += f"**{item['display_name']}**"
+                elif 'id' in item:
+                    formatted += f"**ID: {item['id']}**"
+                
+                # Add key details
+                if 'status' in item:
+                    formatted += f" (Status: {item['status']['value']})"
+                if 'site' in item and item['site']:
+                    formatted += f" (Site: {item['site']['name']})"
+                
+                formatted += "\n"
+            
+            if len(results) > 5:
+                formatted += f"\n... and {len(results) - 5} more results"
+            
+            return formatted
+        else:
+            # Handle single object
+            return json.dumps(data, indent=2)
+    
+    return str(data)
 
-    # Button to submit the question
-    if st.button("Send"):
-        if user_input:
-            # Add the user input to the conversation history
-            st.session_state.conversation.append({"role": "user", "content": user_input})
-
-            # Invoke the agent with the user input and current chat history
-            try:
-                response = agent_executor.invoke({
-                    "input": user_input,
-                    "chat_history": st.session_state.chat_history,
-                    "agent_scratchpad": ""  # Initialize agent scratchpad as an empty string
-                })
-
-                # Process the agent's response
-                final_response = process_agent_response(response)
-
-                # Extract the final answer
-                final_answer = final_response.get('output', 'No answer provided.')
-
-                # Display the question and answer
-                st.write(f"**Question:** {user_input}")
-                st.write(f"**Answer:** {final_answer}")
-
-                # Add the response to the conversation history
-                st.session_state.conversation.append({"role": "assistant", "content": final_answer})
-
-                # Update chat history with the new conversation
-                st.session_state.chat_history = "\n".join(
-                    [f"{entry['role'].capitalize()}: {entry['content']}" for entry in st.session_state.conversation]
-                )
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-
-    # Display conversation history
-    if st.session_state.conversation:
-        st.markdown("### Conversation History")
-        for entry in st.session_state.conversation:
-            if entry["role"] == "user":
-                st.markdown(f"**User:** {entry['content']}")
-            elif entry["role"] == "assistant":
-                st.markdown(f"**NetBox AI ReAct Agent:** {entry['content']}")
-
-# Page Navigation
-if 'page' not in st.session_state:
-    st.session_state['page'] = "configure"
-
-if st.session_state['page'] == "configure":
-    configure_page()
-elif st.session_state['page'] == "chat":
-    chat_page()
+if __name__ == "__main__":
+    # Start the Slack bot
+    try:
+        import sys
+        sys.path.append('../resources')
+        from config_loader import ConfigLoader
+        config = ConfigLoader()
+        slack_config = config.get_slack_config()
+        slack_app_token = slack_config.get('SLACK_APP_TOKEN')
+    except:
+        # Fallback to environment variable
+        slack_app_token = os.environ["SLACK_APP_TOKEN"]
+    
+    handler = SocketModeHandler(app, slack_app_token)
+    handler.start() 

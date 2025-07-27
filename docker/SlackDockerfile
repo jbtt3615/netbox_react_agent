@@ -1,0 +1,32 @@
+FROM ubuntu:latest
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN echo "==> Upgrading system and installing utilities ...." \
+ && apt -y update \
+ && apt-get install -y wget curl \
+ && apt-get -y install sudo
+
+RUN echo "==> Installing Python3 and pip ...." \  
+ && apt-get install python3 -y \
+ && apt install python3-pip -y
+
+RUN echo "==> Install dos2unix..." \
+  && sudo apt-get install dos2unix -y 
+
+RUN echo "==> Install Python dependencies.." \
+  && pip install --break-system-packages -U --quiet langchain_community \
+  && pip install --break-system-packages openai \
+  && pip install --break-system-packages slack-bolt \
+  && pip install --break-system-packages requests \
+  && pip install --break-system-packages urllib3
+
+COPY /slack_bot /slack_bot/
+COPY /netbox_react_agent/netbox_apis.json /slack_bot/netbox_apis.json
+
+RUN echo "==> Convert script..." \
+  && dos2unix /slack_bot/slack_bot.py
+
+WORKDIR /slack_bot
+
+CMD ["python3", "slack_bot.py"] 
