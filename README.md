@@ -1,199 +1,244 @@
-# NetBox React Agent - Fully Containerized with Slack Integration
+# NetBox Slack Bot with OpenAI Integration
 
-A complete containerized solution that includes NetBox, MySQL, Redis, and an AI-powered React Agent accessible via both web interface and Slack. Everything runs in Docker containers for easy sharing and deployment.
+A powerful Slack bot that provides intelligent assistance for NetBox network infrastructure management using OpenAI's GPT models.
 
-## 🚀 Quick Start (One Command)
+## 🚀 Features
 
-```bash
-# Clone the repository
-git clone <your-repo>
-cd netbox_react_agent
-
-# Make startup script executable and run
-chmod +x start.sh
-./start.sh
-```
-
-The script will:
-1. Create a `.env` file from template
-2. Guide you through credential setup
-3. Start all services automatically
-
-## 📋 Prerequisites
-
-- **Docker and Docker Compose** installed
-- **OpenAI API Key** (for GPT-4o)
-- **Slack App credentials** (see Slack Setup section)
-
-## 🔧 Configuration
-
-### 1. Environment Setup
-Edit the `.env` file with your credentials:
-
-```bash
-# NetBox Configuration
-NETBOX_URL=http://netbox:8080
-NETBOX_TOKEN=your-netbox-api-token-here
-
-# OpenAI Configuration
-OPENAI_API_KEY=your-openai-api-key-here
-
-# Slack Configuration
-SLACK_BOT_TOKEN=xoxb-your-slack-bot-token-here
-SLACK_SIGNING_SECRET=your-slack-signing-secret-here
-SLACK_APP_TOKEN=xapp-your-slack-app-token-here
-```
-
-### 2. Slack App Setup
-1. Go to https://api.slack.com/apps
-2. Create a new app → "From scratch"
-3. Configure bot token scopes:
-   - `app_mentions:read`
-   - `channels:history`
-   - `chat:write`
-   - `im:history`
-   - `im:read`
-   - `im:write`
-4. Enable Socket Mode and create app-level token
-5. Subscribe to events: `app_mention`, `message.im`
-6. Install app to workspace
-7. Copy tokens to `.env` file
+- **🤖 AI-Powered Responses**: Uses OpenAI GPT-3.5-turbo for intelligent, contextual answers
+- **📡 Slack Integration**: Works with direct messages and channel mentions
+- **🔧 NetBox API Knowledge**: Comprehensive understanding of NetBox endpoints and operations
+- **🔒 Secure Configuration**: API keys and credentials protected via `.gitignore`
+- **🐳 Docker Ready**: Full containerization support for easy deployment
+- **📊 MySQL Support**: Local database configuration for NetBox
+- **🧪 Testing Tools**: Built-in connectivity and functionality tests
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│     MySQL       │    │      Redis       │    │     NetBox      │
-│   (Database)    │    │    (Caching)     │    │   (Web App)     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Slack Workspace│    │  OpenAI API     │    │   NetBox API    │
+│                 │    │                 │    │                 │
+│ • Direct Messages│◄──►│ • GPT-3.5-turbo │    │ • Device Mgmt   │
+│ • Channel Mentions│   │ • System Prompts│    │ • IP Management │
+│ • Socket Mode    │    │ • Context Aware │    │ • Site Mgmt     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          └───────────────────────┼───────────────────────┘
                                  │
                     ┌─────────────────┐
-                    │  Docker Network │
+                    │  Standalone Bot │
+                    │                 │
+                    │ • Python 3.9+   │
+                    │ • Slack Bolt    │
+                    │ • LangChain     │
+                    │ • MySQL Config  │
                     └─────────────────┘
-                                 │
-         ┌───────────────────────┼───────────────────────┐
-         │                       │                       │
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Streamlit Agent │    │   Slack Bot      │    │   Your Browser  │
-│   (Port 8501)   │    │   (Background)   │    │   (Port 8000)   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
-## 📊 Services
+## 📋 Prerequisites
 
-| Service | Port | Description | Default Credentials |
-|---------|------|-------------|-------------------|
-| NetBox | 8000 | Web interface | admin/admin123 |
-| Streamlit | 8501 | Agent web interface | - |
-| MySQL | 3306 | Database | netbox/netbox123 |
-| Redis | 6379 | Cache | - |
+- **Python 3.9+**
+- **MySQL** (local or containerized)
+- **Slack App** with proper permissions
+- **OpenAI API Key**
+- **NetBox Instance** (optional for full functionality)
 
-## 💬 Using the System
+## ⚡ Quick Start
 
-### Web Interface
-- **NetBox**: http://localhost:8000
-- **Streamlit Agent**: http://localhost:8501
-
-### Slack Integration
-- **Channel mentions**: `@your-bot show me all devices`
-- **Direct messages**: Send private queries to the bot
-
-### Example Queries
-```
-"Show me all devices in DC1"
-"Create a new VLAN with ID 100"
-"List all IP addresses"
-"Delete device with ID 123"
-```
-
-## 🛠️ Management
-
-### View Logs
+### 1. Clone the Repository
 ```bash
-# All services
-docker-compose logs -f
-
-# Specific service
-docker-compose logs -f netbox
-docker-compose logs -f slack_bot
+git clone https://github.com/jbtt3615/netbox_react_agent.git
+cd netbox_react_agent
 ```
 
-### Restart Services
+### 2. Set Up Configuration
 ```bash
-# All services
-docker-compose restart
+# Copy the sample configuration
+cp resources/db_config.ini.sample resources/db_config.ini
 
-# Specific service
-docker-compose restart slack_bot
+# Edit the configuration with your credentials
+nano resources/db_config.ini
 ```
 
-### Stop Services
+### 3. Install Dependencies
 ```bash
-docker-compose down
+pip3 install -r requirements_standalone.txt
 ```
 
-### Update NetBox Token
-1. Access NetBox at http://localhost:8000
-2. Go to Admin → API Tokens
-3. Create a new token
-4. Update `NETBOX_TOKEN` in `.env`
-5. Restart: `docker-compose restart`
-
-## 🔍 Troubleshooting
-
-### Services Not Starting
+### 4. Test Slack Connection
 ```bash
-# Check status
-docker-compose ps
-
-# Check logs
-docker-compose logs [service-name]
+./test_slack.sh
 ```
 
-### Slack Bot Issues
-1. Verify bot is added to channels
-2. Check bot token permissions
-3. Ensure Socket Mode is enabled
-4. Check logs: `docker-compose logs slack_bot`
+### 5. Start the Bot
+```bash
+python3 standalone_slack_bot.py
+```
 
-### Database Issues
-- MySQL data is persisted in Docker volume
-- Reset database: `docker-compose down -v && docker-compose up -d`
+## 🔧 Configuration
 
-## 📦 Sharing the Setup
+Edit `resources/db_config.ini` with your credentials:
 
-### For Team Members
-1. Share the repository
-2. Provide the `.env.example` template
-3. Each person runs `./start.sh`
-4. Configure their own credentials
+```ini
+[mysql]
+DB_HOST = localhost
+DB_USER = root
+DB_PASSWORD = your_actual_password
+DB_PORT = 3306
+DB_NAME = netbox
 
-### For Production
-1. Use proper SSL certificates
-2. Set up reverse proxy
-3. Use Docker secrets for sensitive data
-4. Configure monitoring and backups
-5. Use external database for persistence
+[netbox]
+NETBOX_URL = http://netbox:8080
+NETBOX_TOKEN = your_netbox_token_here
 
-## 🔐 Security Notes
+[openai]
+OPENAI_API_KEY = sk-your_openai_api_key_here
 
-- Change default NetBox admin password
-- Use strong API tokens
-- Keep `.env` file secure
-- Enable HTTPS in production
-- Regular security updates
+[slack]
+SLACK_BOT_TOKEN = xoxb-your_slack_bot_token_here
+SLACK_SIGNING_SECRET = your_slack_signing_secret_here
+SLACK_APP_TOKEN = xapp-your_slack_app_token_here
+```
 
-## 📝 Features
+## 🛠️ Slack App Setup
 
-- ✅ **Fully Containerized** - Everything runs in Docker
-- ✅ **Natural Language Interface** - Chat with your network data
-- ✅ **Slack Integration** - Access from anywhere via Slack
-- ✅ **CRUD Operations** - Full Create, Read, Update, Delete
-- ✅ **API Validation** - Ensures valid requests
-- ✅ **Easy Sharing** - One command setup
-- ✅ **Persistent Data** - MySQL data survives restarts
+### Required Bot Token Scopes:
+- `app_mentions:read`
+- `channels:join`
+- `channels:read`
+- `chat:write`
+- `im:read`
+- `im:write`
+- `im:history`
+- `channels:history`
+- `groups:history`
+- `mpim:history`
+- `users:read`
+
+### Required Events:
+- `app_mention`
+- `message`
+
+### Required Socket Mode:
+- Enable Socket Mode in your Slack app settings
+
+See `SLACK_SETUP_GUIDE.md` for detailed setup instructions.
+
+## 🧪 Testing
+
+### Test Slack Connection
+```bash
+./test_slack.sh
+```
+
+### Test Bot Name
+```bash
+python3 check_bot_name.py
+```
+
+### Test Channel Status
+```bash
+python3 check_channels.py
+```
+
+## 🤖 Usage Examples
+
+### Direct Messages
+Send a direct message to your bot:
+```
+hello
+what can you do?
+how do I add a device to NetBox?
+```
+
+### Channel Mentions
+Mention the bot in a channel:
+```
+@echo_bot how do I manage IP addresses?
+@echo_bot show me the API for creating sites
+```
+
+### Sample Queries
+- `"How do I add a new network device?"`
+- `"What's the API call to list all IP addresses?"`
+- `"Show me the JSON structure for creating a device"`
+- `"How do I manage sites in NetBox?"`
+- `"Explain NetBox device roles"`
+
+## 🐳 Docker Deployment
+
+### Full Containerized Setup
+```bash
+# Start all services (NetBox, MySQL, Redis, Bot)
+docker-compose up -d
+```
+
+### Standalone Bot Only
+```bash
+# Build and run just the bot
+docker build -f docker/Dockerfile -t netbox-slack-bot .
+docker run --env-file .env netbox-slack-bot
+```
+
+## 📁 Project Structure
+
+```
+netbox_react_agent/
+├── standalone_slack_bot.py      # Main bot application
+├── resources/
+│   ├── db_config.ini.sample     # Configuration template
+│   ├── db_config.ini           # Your config (gitignored)
+│   └── config_loader.py        # Configuration loader
+├── test_slack_connection.py     # Slack connectivity test
+├── test_slack.sh               # Test script
+├── requirements_standalone.txt  # Python dependencies
+├── docker-compose.yml          # Full stack deployment
+├── docker/
+│   └── Dockerfile              # Bot container
+├── README_STANDALONE.md        # Detailed setup guide
+├── SLACK_SETUP_GUIDE.md        # Slack app setup
+└── .gitignore                  # Security protection
+```
+
+## 🔒 Security
+
+- **API Keys**: Stored in `resources/db_config.ini` (gitignored)
+- **Sample Files**: Only contain placeholder values
+- **Environment Variables**: Supported for production deployment
+- **SSL/TLS**: All API communications are encrypted
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+1. **"ModuleNotFoundError: No module named 'requests'"**
+   ```bash
+   pip3 install -r requirements_standalone.txt
+   ```
+
+2. **"invalid_auth" Slack Error**
+   - Check your bot token in `resources/db_config.ini`
+   - Ensure the app is installed to your workspace
+
+3. **"missing_scope" Error**
+   - Add required scopes in Slack app settings
+   - Reinstall the app to your workspace
+
+4. **OpenAI API Errors**
+   - Verify your API key is correct
+   - Check your OpenAI account balance
+
+### Debug Mode
+```bash
+# Run with verbose logging
+python3 standalone_slack_bot.py --debug
+```
+
+## 📚 Documentation
+
+- **[README_STANDALONE.md](README_STANDALONE.md)** - Comprehensive setup guide
+- **[SLACK_SETUP_GUIDE.md](SLACK_SETUP_GUIDE.md)** - Detailed Slack app configuration
+- **[Docker Setup](docker-compose.yml)** - Containerized deployment
 
 ## 🤝 Contributing
 
@@ -205,4 +250,15 @@ docker-compose logs [service-name]
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **NetBox** - Network infrastructure documentation
+- **Slack** - Messaging platform and API
+- **OpenAI** - AI language models
+- **LangChain** - AI application framework
+
+---
+
+**Ready to deploy?** Follow the [Quick Start](#-quick-start) guide above to get your NetBox Slack bot running in minutes! 🚀
